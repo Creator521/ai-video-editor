@@ -1,0 +1,32 @@
+# Environments & dependencies
+.venv/
+venv/
+ENV/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.cache/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Local pipeline data & outputs
+.analysis/
+outputs/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.wmv
+*.flv
+*.webm
+
+# Temporary / OS files
+.DS_Store
+Thumbs.db
