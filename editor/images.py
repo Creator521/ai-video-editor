@@ -6,7 +6,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 from editor.style import KEN_BURNS
 
@@ -15,19 +15,39 @@ Progress = Callable[[str], None]
 
 STYLE_PREFIX = (
     "2D educational cartoon documentary illustration, ink outlines, "
-    "warm earth tones, parchment sky, historically themed, cinematic 16:9, no text"
+    "warm earth tones, parchment sky, historically themed, no text"
+)
+
+PAPER_EDITORIAL_PREFIX = (
+    "Handmade editorial illustration for a paper-collage documentary, "
+    "flat cut-paper shapes layered like a crafted scrapbook, delicate ink outlines, "
+    "warm parchment cream, amber and ochre accents, tactile paper grain, "
+    "strong simple composition, one clear subject, no lettering, no captions, no watermark"
 )
 
 
-def generate_scene_image(prompt: str, dest: Path, seed: int) -> Path:
+def generate_scene_image(
+    prompt: str,
+    dest: Path,
+    seed: int,
+    aspect_ratio: str = "16:9",
+    visual_style: str = "Cinematic Documentary",
+) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     visual = " ".join(prompt.replace("\n", " ").split())
     if len(visual) > 420:
         visual = visual[:420]
-    full = f"{visual}. {STYLE_PREFIX}"
+    if aspect_ratio == "9:16":
+        width, height = 1080, 1920
+        composition = "Vertical 9:16 portrait composition; keep the main subject large and inside the center safe area."
+    else:
+        width, height = 1920, 1080
+        composition = "Wide 16:9 landscape composition; keep the main subject clear and inside the center safe area."
+    style_prefix = PAPER_EDITORIAL_PREFIX if visual_style == "Paper Editorial" else STYLE_PREFIX
+    full = f"{visual}. {composition} {style_prefix}"
     encoded = urllib.parse.quote(full, safe="")
     params = urllib.parse.urlencode(
-        {"width": 1920, "height": 1080, "seed": seed, "nologo": "true"}
+        {"width": width, "height": height, "seed": seed, "nologo": "true"}
     )
     url = f"https://image.pollinations.ai/prompt/{encoded}?{params}"
     req = urllib.request.Request(
@@ -41,7 +61,7 @@ def generate_scene_image(prompt: str, dest: Path, seed: int) -> Path:
         if len(image_bytes) > 25 * 1024 * 1024:
             raise ValueError("Generated image is larger than 25 MB")
         dest.write_bytes(image_bytes)
-    _fit_frame(dest)
+    _fit_frame(dest, width, height)
     return dest
 
 
@@ -60,13 +80,13 @@ def generate_all_images(script: dict, job_dir: Path, progress: Progress | None =
         except Exception as exc:  # noqa: BLE001
             (dest.with_suffix(".err.txt")).write_text(str(exc), encoding="utf-8")
             _placeholder(dest, scene)
-        _maybe_card(dest, scene)
         paths.append(dest)
     return paths
 
 
-def _fit_frame(path: Path) -> None:
-    w, h = KEN_BURNS["width"], KEN_BURNS["height"]
+def _fit_frame(path: Path, width: int | None = None, height: int | None = None) -> None:
+    w = int(width or KEN_BURNS["width"])
+    h = int(height or KEN_BURNS["height"])
     im = Image.open(path).convert("RGB")
     scale = max(w / im.width, h / im.height)
     nw, nh = int(im.width * scale), int(im.height * scale)
@@ -85,29 +105,6 @@ def _placeholder(path: Path, scene: dict) -> None:
     text = scene.get("card") or scene.get("year") or f"Scene {scene['id']}"
     draw.text((w // 2, h // 2), text, fill=(236, 220, 180), font=font, anchor="mm")
     im.save(path, "PNG")
-
-
-def _maybe_card(path: Path, scene: dict) -> None:
-    year = scene.get("year") or ""
-    card = scene.get("card") or ""
-    if not year and not card:
-        return
-    im = Image.open(path).convert("RGBA")
-    overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    label = "  ".join(p for p in (year, card) if p)
-    font = _font(48)
-    bbox = draw.textbbox((0, 0), label, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    pad_x, pad_y = 28, 16
-    x = (im.width - tw) // 2
-    y = im.height - th - 90
-    box = [x - pad_x, y - pad_y, x + tw + pad_x, y + th + pad_y]
-    draw.rounded_rectangle(box, radius=8, fill=(20, 14, 10, 170), outline=(220, 190, 130, 220), width=2)
-    draw.text((x, y), label, font=font, fill=(245, 230, 190, 255))
-    out = Image.alpha_composite(im, overlay).convert("RGB")
-    out = out.filter(ImageFilter.SMOOTH)
-    out.save(path, "PNG")
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
